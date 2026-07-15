@@ -7,6 +7,8 @@ permissions:
 on:
   workflow_dispatch:
   push:
+    branches:
+      - develop
     tags:
       - "main-*"
     paths-ignore:
@@ -30,6 +32,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Publish edge images on every develop push so downstream SeerrNG,
+          # which tracks the floating softcover/hardcover tags, always receives
+          # the latest develop changes. Versioned releases still require a
+          # main-* tag pointing at a commit on main.
+          if [[ "${GITHUB_REF_TYPE}" == "branch" && "${GITHUB_REF_NAME}" == "develop" ]]; then
+            echo "Publishing edge images from develop."
+            exit 0
+          fi
           if [[ "${GITHUB_REF_NAME}" != main-* ]]; then
             echo "Release image publishing requires a main-* tag, got ${GITHUB_REF_NAME}" >&2
             exit 1
