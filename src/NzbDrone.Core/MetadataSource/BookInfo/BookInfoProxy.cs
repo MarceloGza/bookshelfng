@@ -19,6 +19,7 @@ using NzbDrone.Core.Exceptions;
 using NzbDrone.Core.Http;
 using NzbDrone.Core.MediaCover;
 using NzbDrone.Core.MetadataSource.Goodreads;
+using NzbDrone.Core.MetadataSource.Hardcover;
 using JsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace NzbDrone.Core.MetadataSource.BookInfo
@@ -39,6 +40,7 @@ namespace NzbDrone.Core.MetadataSource.BookInfo
         private readonly IEditionService _editionService;
         private readonly Logger _logger;
         private readonly IMetadataRequestBuilder _requestBuilder;
+        private readonly IHardcoverMetadataProxy _hardcoverMetadataProxy;
         private readonly ICached<HashSet<string>> _cache;
         private readonly CachingService _authorCache;
 
@@ -49,6 +51,7 @@ namespace NzbDrone.Core.MetadataSource.BookInfo
                              IBookService bookService,
                              IEditionService editionService,
                              IMetadataRequestBuilder requestBuilder,
+                             IHardcoverMetadataProxy hardcoverMetadataProxy,
                              Logger logger,
                              ICacheManager cacheManager)
         {
@@ -59,6 +62,7 @@ namespace NzbDrone.Core.MetadataSource.BookInfo
             _bookService = bookService;
             _editionService = editionService;
             _requestBuilder = requestBuilder;
+            _hardcoverMetadataProxy = hardcoverMetadataProxy;
             _cache = cacheManager.GetCache<HashSet<string>>(GetType());
             _logger = logger;
 
@@ -71,6 +75,13 @@ namespace NzbDrone.Core.MetadataSource.BookInfo
 
         public HashSet<string> GetChangedAuthors(DateTime startTime)
         {
+            if (_hardcoverMetadataProxy.IsNativeEnabled)
+            {
+                // Hardcover does not expose the legacy Readarr changed-author
+                // feed. Scheduled refreshes continue to use the local queue.
+                return null;
+            }
+
             var httpRequest = _requestBuilder.GetRequestBuilder().Create()
                 .SetSegment("route", "author/changed")
                 .AddQueryParam("since", startTime.ToString("o"))
@@ -90,6 +101,11 @@ namespace NzbDrone.Core.MetadataSource.BookInfo
 
         public Author GetAuthorInfo(string foreignAuthorId, bool useCache = false)
         {
+            if (_hardcoverMetadataProxy.IsNativeEnabled)
+            {
+                return MapAuthor(_hardcoverMetadataProxy.GetAuthor(foreignAuthorId));
+            }
+
             _logger.Debug("Getting Author details GoodreadsId of {0}", foreignAuthorId);
 
             try
@@ -120,6 +136,18 @@ namespace NzbDrone.Core.MetadataSource.BookInfo
 
         public Tuple<string, Book, List<AuthorMetadata>> GetBookInfo(string foreignBookId)
         {
+            if (_hardcoverMetadataProxy.IsNativeEnabled)
+            {
+                var resource = _hardcoverMetadataProxy.GetWork(foreignBookId);
+                var book = MapBook(resource);
+                var authorId = GetAuthorId(resource).ToString();
+                var metadata = resource.Authors.Select(MapAuthorMetadata).ToList();
+
+                MapSeriesLinks(resource.Series.Select(MapSeries).ToList(), new List<Book> { book }, resource.Series);
+
+                return Tuple.Create(authorId, book, metadata);
+            }
+
             try
             {
                 return PollBook(foreignBookId);
@@ -384,6 +412,39 @@ namespace NzbDrone.Core.MetadataSource.BookInfo
 
         private Book GetEditionInfo(int id, bool getAllEditions)
         {
+            if (_hardcoverMetadataProxy.IsNativeEnabled)
+            {
+                var resource = _hardcoverMetadataProxy.GetEdition(id.ToString());
+                var nativeBook = MapBook(resource);
+                var nativeAuthors = resource.Authors.Select(MapAuthorMetadata).ToDictionary(x => x.ForeignAuthorId);
+                var nativeAuthorId = GetAuthorId(resource).ToString();
+
+                AddDbIds(nativeAuthorId, nativeBook, nativeAuthors);
+
+                MapSeriesLinks(resource.Series.Select(MapSeries).ToList(), new List<Book> { nativeBook }, resource.Series);
+
+                if (!getAllEditions)
+                {
+                    var trimmed = new Book();
+                    trimmed.UseMetadataFrom(nativeBook);
+                    trimmed.Author.Value.Metadata = nativeBook.AuthorMetadata.Value;
+                    trimmed.AuthorMetadata = nativeBook.AuthorMetadata.Value;
+                    trimmed.SeriesLinks = nativeBook.SeriesLinks;
+                    var edition = nativeBook.Editions.Value.SingleOrDefault(x => x.ForeignEditionId == id.ToString());
+
+                    if (edition == null)
+                    {
+                        throw new EditionNotFoundException(id.ToString());
+                    }
+
+                    edition.Monitored = true;
+                    trimmed.Editions = new List<Edition> { edition };
+                    nativeBook = trimmed;
+                }
+
+                return nativeBook;
+            }
+
             HttpRequest httpRequest;
             HttpResponse httpResponse;
 
@@ -799,7 +860,7 @@ namespace NzbDrone.Core.MetadataSource.BookInfo
             var metadata = MapAuthorMetadata(resource);
 
             var books = resource.Works
-                .Where(x => x.ForeignId > 0 && GetAuthorId(x) == resource.ForeignId)
+                .Where(x => x.ForeignId > 0 && HasAuthor(x, resource.ForeignId))
                 .Select(MapBook)
                 .ToList();
 
@@ -877,7 +938,7 @@ namespace NzbDrone.Core.MetadataSource.BookInfo
                 RelatedBooks = resource.RelatedWorks
             };
 
-            book.Links.Add(new Links { Url = resource.Url, Name = "Goodreads Editions" });
+            book.Links.Add(new Links { Url = resource.Url, Name = "Book Editions" });
 
             if (resource.Books != null)
             {
@@ -989,6 +1050,13 @@ namespace NzbDrone.Core.MetadataSource.BookInfo
             var book = b.Books.OrderByDescending(x => x.RatingCount * x.AverageRating)
                 .FirstOrDefault(x => x.Contributors != null && x.Contributors.Any());
             return book?.Contributors?.FirstOrDefault()?.ForeignId ?? 0;
+        }
+
+        private static bool HasAuthor(WorkResource work, int authorId)
+        {
+            return work?.Authors?.Any(x => x.ForeignId == authorId) == true ||
+                   work?.Books?.SelectMany(x => x.Contributors ?? new List<ContributorResource>())
+                       .Any(x => x.ForeignId == authorId) == true;
         }
     }
 }

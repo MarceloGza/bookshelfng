@@ -53,6 +53,40 @@ If anonymous `docker pull ghcr.io/snapetech/bookshelfng:softcover` returns
 GitHub package settings, or Docker needs to be authenticated with package read
 access.
 
+### Native Hardcover metadata
+
+The `hardcover` image uses BookshelfNG's native Hardcover GraphQL provider by
+default. It handles search, author, work, edition, series, ISBN, and ASIN
+lookups directly from BookshelfNG, so a normal Hardcover deployment does not
+need rreading-glasses or a metadata proxy in the request path.
+
+Native mode requires a Hardcover API token at runtime:
+
+```env
+HARDCOVER=true
+HARDCOVER_AUTH=Bearer your-hardcover-api-token
+```
+
+`HARDCOVER_API_KEY` is accepted as an alternative variable. The default API
+endpoint is `https://api.hardcover.app`; override it with
+`HARDCOVER_API_URL` only when using a compatible endpoint or a test service.
+The token is sent to Hardcover by BookshelfNG and is not baked into the image.
+
+`METADATA_URL` remains the compatibility fallback. Set
+`HARDCOVER_NATIVE=false` to disable direct GraphQL access and route metadata
+through that URL instead. This is the setting to use when an existing
+rreading-glasses cache must be preserved, when another Readarr-compatible
+metadata service is required, or when testing the legacy path. Native mode
+does not silently fail over to another service after a GraphQL error; select
+the compatibility path deliberately so the active dependency is visible.
+
+Native and compatibility modes use the same Bookshelf metadata models, but
+their foreign IDs are not interchangeable with Goodreads/softcover IDs.
+Native mode caches responses in the Bookshelf process for the lifetime of the
+instance. rreading-glasses remains useful when a durable shared PostgreSQL
+cache, a Goodreads-compatible endpoint, or a proxy boundary is more valuable
+than removing the extra service.
+
 ## Upstream project
 
 This is a revival of [Readarr](https://github.com/Readarr/Readarr). The images
@@ -77,9 +111,12 @@ slop. However, it is backward-compatible with existing Readarr databases and
 functionality like Goodreads list imports should continue to work normally.
 
 The `hardcover` tags use [Hardcover](https://hardcover.app/home) as a metadata
-provider. This metadata is higher quality but isn't backward-compatible with
-Goodreads/softcover IDs. Goodreads list imports haven't been tested and likely
-don't work.
+provider. When `HARDCOVER=true`, BookshelfNG selects the native provider by
+default; set `HARDCOVER_NATIVE=false` to use the compatibility endpoint at
+`METADATA_URL` instead. Native mode requires `HARDCOVER_AUTH` (or
+`HARDCOVER_API_KEY`) at runtime. This metadata is higher quality but isn't
+backward-compatible with Goodreads/softcover IDs. Hardcover list imports use
+the API key configured in the Bookshelf import-list settings.
 
 ## Support
 
@@ -98,7 +135,7 @@ Already done
 - [x] Native support for MyAnonaMouse without Prowlarr.
 - [x] Hardcover list import.
 - [x] Improved matching.
-- [x] Metadata is no longer cached locally.
+- [x] Native Hardcover metadata with an explicit compatibility fallback.
 - [x] Removed servarr analytics spyware.
 - [x] Supports selfhosted metadata (UI or `METADATA_URL` env var).
 

@@ -4,6 +4,7 @@ using System.Net;
 using NLog;
 using NzbDrone.Common.Http;
 using NzbDrone.Core.Http;
+using NzbDrone.Core.MetadataSource.Hardcover;
 
 namespace NzbDrone.Core.MetadataSource.Goodreads
 {
@@ -16,19 +17,27 @@ namespace NzbDrone.Core.MetadataSource.Goodreads
     {
         private readonly ICachedHttpResponseService _cachedHttpClient;
         private readonly IMetadataRequestBuilder _metadataRequestBuilder;
+        private readonly IHardcoverMetadataProxy _hardcoverMetadataProxy;
         private readonly Logger _logger;
 
         public GoodreadsSearchProxy(ICachedHttpResponseService cachedHttpClient,
             IMetadataRequestBuilder metadataRequestBuilder,
+            IHardcoverMetadataProxy hardcoverMetadataProxy,
             Logger logger)
         {
             _cachedHttpClient = cachedHttpClient;
             _metadataRequestBuilder = metadataRequestBuilder;
+            _hardcoverMetadataProxy = hardcoverMetadataProxy;
             _logger = logger;
         }
 
         public List<SearchJsonResource> Search(string query)
         {
+            if (_hardcoverMetadataProxy.IsNativeEnabled)
+            {
+                return _hardcoverMetadataProxy.Search(query);
+            }
+
             try
             {
                 var httpRequest = _metadataRequestBuilder.GetRequestBuilder().Create()
