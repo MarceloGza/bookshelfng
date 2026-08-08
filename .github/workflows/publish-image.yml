@@ -6,6 +6,10 @@ permissions:
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths-ignore:
+      - "README.md"
+      - "docs/**"
   push:
     branches:
       - develop
@@ -32,6 +36,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Allow PR builds through for personal GHCR testing.
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            echo "Building PR image for testing."
+            exit 0
+          fi
           # Publish edge images on every develop push so downstream SeerrNG,
           # which tracks the floating softcover/hardcover tags, always receives
           # the latest develop changes. Versioned releases still require a
@@ -112,33 +121,28 @@ jobs:
         with:
           images: |
             ghcr.io/${{ github.repository }}
-            docker.io/snapetech/bookshelfng
           tags: |
-            type=raw,value=softcover
-            type=raw,value=softcover-v${{ env.READARR_VERSION }}
-            type=raw,value=softcover-v${{ env.READARR_VERSION }}.${{ github.run_number }}
+            ${{ github.event_name == 'pull_request' && format('type=raw,value=softcover-pr{0}', github.event.pull_request.number) || '' }}
+            ${{ github.event_name != 'pull_request' && 'type=raw,value=softcover' || '' }}
+            ${{ github.event_name != 'pull_request' && format('type=raw,value=softcover-v{0}', env.READARR_VERSION) || '' }}
+            ${{ github.event_name != 'pull_request' && format('type=raw,value=softcover-v{0}.{1}', env.READARR_VERSION, github.run_number) || '' }}
 
       - uses: docker/metadata-action@v5
         id: hardcover_meta
         with:
           images: |
             ghcr.io/${{ github.repository }}
-            docker.io/snapetech/bookshelfng
           tags: |
-            type=raw,value=hardcover
-            type=raw,value=hardcover-v${{ env.READARR_VERSION }}
-            type=raw,value=hardcover-v${{ env.READARR_VERSION }}.${{ github.run_number }}
+            ${{ github.event_name == 'pull_request' && format('type=raw,value=hardcover-pr{0}', github.event.pull_request.number) || '' }}
+            ${{ github.event_name != 'pull_request' && 'type=raw,value=hardcover' || '' }}
+            ${{ github.event_name != 'pull_request' && format('type=raw,value=hardcover-v{0}', env.READARR_VERSION) || '' }}
+            ${{ github.event_name != 'pull_request' && format('type=raw,value=hardcover-v{0}.{1}', env.READARR_VERSION, github.run_number) || '' }}
 
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - uses: docker/build-push-action@v6
         with:
@@ -150,7 +154,7 @@ jobs:
           labels: ${{ steps.softcover_meta.outputs.labels }}
           build-args: |
             GIT_BRANCH=${{ env.BUILD_SOURCEBRANCHNAME }}
-            COMMIT_HASH=${{ github.sha }}
+            COMMIT_HASH=${{ github.event.pull_request.head.sha || github.sha }}
             BUILD_DATE=${{ env.DATE }}
 
       - uses: docker/build-push-action@v6
@@ -163,7 +167,7 @@ jobs:
           labels: ${{ steps.hardcover_meta.outputs.labels }}
           build-args: |
             GIT_BRANCH=${{ env.BUILD_SOURCEBRANCHNAME }}
-            COMMIT_HASH=${{ github.sha }}
+            COMMIT_HASH=${{ github.event.pull_request.head.sha || github.sha }}
             BUILD_DATE=${{ env.DATE }}
             METADATA_URL=https://hardcover.bookinfo.pro
             HARDCOVER=true
