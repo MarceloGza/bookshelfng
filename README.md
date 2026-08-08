@@ -85,7 +85,7 @@ their foreign IDs are not interchangeable with Goodreads/softcover IDs.
 Native mode caches responses in the Bookshelf process for the lifetime of the
 instance. rreading-glasses remains useful when a durable shared PostgreSQL
 cache, a Goodreads-compatible endpoint, or a proxy boundary is more valuable
-than removing the extra service.
+than removing the extra service
 
 ## Upstream project
 
