@@ -121,7 +121,6 @@ jobs:
         with:
           images: |
             ghcr.io/${{ github.repository }}
-            ${{ github.event_name != 'pull_request' && 'docker.io/snapetech/bookshelfng' || '' }}
           tags: |
             ${{ github.event_name == 'pull_request' && format('type=raw,value=softcover-pr{0}', github.event.pull_request.number) || '' }}
             ${{ github.event_name != 'pull_request' && 'type=raw,value=softcover' || '' }}
@@ -133,7 +132,6 @@ jobs:
         with:
           images: |
             ghcr.io/${{ github.repository }}
-            ${{ github.event_name != 'pull_request' && 'docker.io/snapetech/bookshelfng' || '' }}
           tags: |
             ${{ github.event_name == 'pull_request' && format('type=raw,value=hardcover-pr{0}', github.event.pull_request.number) || '' }}
             ${{ github.event_name != 'pull_request' && 'type=raw,value=hardcover' || '' }}
@@ -145,12 +143,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: docker/login-action@v3
-        if: github.event_name != 'pull_request'
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - uses: docker/build-push-action@v6
         with:
