@@ -318,7 +318,7 @@ query GetAuthorEditions($id: Int!, $limit: Int!, $offset: Int!) {
             var id = ParseId(foreignEditionId, "edition");
             var data = ExecuteGraphQl("GetEdition", EditionQuery, new JObject { ["editionID"] = id });
             var edition = data["editions_by_pk"] as JObject;
-            var workId = GetInt(edition?["book"]?["id"]);
+            var workId = GetInt(GetChild(edition?["book"], "id"));
 
             if (workId == 0)
             {
@@ -562,7 +562,7 @@ query GetAuthorEditions($id: Int!, $limit: Int!, $offset: Int!) {
             var contributors = SelectAuthorContributions(work["contributions"] as JArray)
                 .Select(x => new ContributorResource
                 {
-                    ForeignId = GetInt(x["author"]?["id"]),
+                    ForeignId = GetInt(GetChild(x["author"], "id")),
                     Role = WithFallback(GetString(x["contribution"]), "Author")
                 })
                 .ToList();
@@ -574,10 +574,10 @@ query GetAuthorEditions($id: Int!, $limit: Int!, $offset: Int!) {
                 Description = WithFallback(GetString(work["description"]), "N/A"),
                 Isbn13 = GetString(edition["isbn_13"]),
                 Title = CleanSubtitle(title, subtitle),
-                Language = GetString(edition["language"]?["code3"]),
+                Language = GetString(GetChild(edition["language"], "code3")),
                 Format = format.IsNullOrWhiteSpace() ? GetString(edition["physical_format"]) : format,
                 EditionInformation = WithFallback(GetString(edition["edition_information"]), GetString(edition["physical_information"])),
-                Publisher = GetString(edition["publisher"]?["name"]),
+                Publisher = GetString(GetChild(edition["publisher"], "name")),
                 ImageUrl = GetString(work["cached_image"]),
                 IsEbook = string.Equals(format, "ebook", StringComparison.OrdinalIgnoreCase) || string.Equals(format, "kindle edition", StringComparison.OrdinalIgnoreCase),
                 NumPages = GetNullableInt(edition["pages"]),
@@ -802,7 +802,7 @@ query GetAuthorEditions($id: Int!, $limit: Int!, $offset: Int!) {
             var selected = primary.Any() ? primary : (fallback.Any() ? fallback : candidates);
 
             return selected
-                .GroupBy(x => GetInt(x["author"]?["id"]))
+                .GroupBy(x => GetInt(GetChild(x["author"], "id")))
                 .Where(x => x.Key != 0)
                 .Select(x => x.First())
                 .ToList();
@@ -862,6 +862,11 @@ query GetAuthorEditions($id: Int!, $limit: Int!, $offset: Int!) {
             }
 
             return id;
+        }
+
+        private static JToken GetChild(JToken token, string key)
+        {
+            return token is JObject obj ? obj[key] : null;
         }
 
         private static string GetString(JToken token)
