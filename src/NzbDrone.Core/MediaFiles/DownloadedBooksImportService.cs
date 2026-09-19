@@ -21,6 +21,7 @@ namespace NzbDrone.Core.MediaFiles
     {
         List<ImportResult> ProcessRootFolder(IDirectoryInfo directoryInfo);
         List<ImportResult> ProcessPath(string path, ImportMode importMode = ImportMode.Auto, Author author = null, DownloadClientItem downloadClientItem = null);
+        List<ImportResult> ProcessPath(string path, ImportMode importMode, Author author, DownloadClientItem downloadClientItem, RemoteBook remoteBook);
         bool ShouldDeleteFolder(IDirectoryInfo directoryInfo);
     }
 
@@ -78,6 +79,11 @@ namespace NzbDrone.Core.MediaFiles
 
         public List<ImportResult> ProcessPath(string path, ImportMode importMode = ImportMode.Auto, Author author = null, DownloadClientItem downloadClientItem = null)
         {
+            return ProcessPath(path, importMode, author, downloadClientItem, null);
+        }
+
+        public List<ImportResult> ProcessPath(string path, ImportMode importMode, Author author, DownloadClientItem downloadClientItem, RemoteBook remoteBook)
+        {
             _logger.Debug("Processing path: {0}", path);
 
             if (_diskProvider.FolderExists(path))
@@ -89,7 +95,7 @@ namespace NzbDrone.Core.MediaFiles
                     return ProcessFolder(directoryInfo, importMode, downloadClientItem);
                 }
 
-                return ProcessFolder(directoryInfo, importMode, author, downloadClientItem);
+                return ProcessFolder(directoryInfo, importMode, author, downloadClientItem, remoteBook);
             }
 
             if (_diskProvider.FileExists(path))
@@ -101,7 +107,7 @@ namespace NzbDrone.Core.MediaFiles
                     return ProcessFile(fileInfo, importMode, downloadClientItem);
                 }
 
-                return ProcessFile(fileInfo, importMode, author, downloadClientItem);
+                return ProcessFile(fileInfo, importMode, author, downloadClientItem, remoteBook);
             }
 
             LogInaccessiblePathError(path);
@@ -161,7 +167,7 @@ namespace NzbDrone.Core.MediaFiles
             return ProcessFolder(directoryInfo, importMode, author, downloadClientItem);
         }
 
-        private List<ImportResult> ProcessFolder(IDirectoryInfo directoryInfo, ImportMode importMode, Author author, DownloadClientItem downloadClientItem)
+        private List<ImportResult> ProcessFolder(IDirectoryInfo directoryInfo, ImportMode importMode, Author author, DownloadClientItem downloadClientItem, RemoteBook remoteBook = null)
         {
             if (_authorService.AuthorPathExists(directoryInfo.FullName))
             {
@@ -209,7 +215,8 @@ namespace NzbDrone.Core.MediaFiles
 
             var idOverrides = new IdentificationOverrides
             {
-                Author = author
+                Author = author,
+                Book = remoteBook?.Books.Count == 1 ? remoteBook.Books.Single() : null
             };
             var idInfo = new ImportDecisionMakerInfo
             {
@@ -269,7 +276,7 @@ namespace NzbDrone.Core.MediaFiles
             return ProcessFile(fileInfo, importMode, author, downloadClientItem);
         }
 
-        private List<ImportResult> ProcessFile(IFileInfo fileInfo, ImportMode importMode, Author author, DownloadClientItem downloadClientItem)
+        private List<ImportResult> ProcessFile(IFileInfo fileInfo, ImportMode importMode, Author author, DownloadClientItem downloadClientItem, RemoteBook remoteBook = null)
         {
             if (Path.GetFileNameWithoutExtension(fileInfo.Name).StartsWith("._"))
             {
@@ -294,7 +301,8 @@ namespace NzbDrone.Core.MediaFiles
 
             var idOverrides = new IdentificationOverrides
             {
-                Author = author
+                Author = author,
+                Book = remoteBook?.Books.Count == 1 ? remoteBook.Books.Single() : null
             };
             var idInfo = new ImportDecisionMakerInfo
             {
