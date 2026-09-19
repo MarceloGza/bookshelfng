@@ -100,6 +100,27 @@ namespace NzbDrone.Core.Test.MediaFiles
         }
 
         [Test]
+        public void should_bind_the_single_requested_book_when_importing_a_tracked_download()
+        {
+            var expectedBook = Builder<Book>.CreateNew().With(x => x.Id = 164).Build();
+            var remoteBook = new RemoteBook
+            {
+                Author = new Author(),
+                Books = new List<Book> { expectedBook }
+            };
+            IdentificationOverrides capturedOverrides = null;
+
+            Mocker.GetMock<IMakeImportDecision>()
+                  .Setup(v => v.GetImportDecisions(It.IsAny<List<IFileInfo>>(), It.IsAny<IdentificationOverrides>(), It.IsAny<ImportDecisionMakerInfo>(), It.IsAny<ImportDecisionMakerConfig>()))
+                  .Callback<List<IFileInfo>, IdentificationOverrides, ImportDecisionMakerInfo, ImportDecisionMakerConfig>((_, overrides, _, _) => capturedOverrides = overrides)
+                  .Returns(new List<ImportDecision<LocalBook>>());
+
+            Subject.ProcessPath(_audioFiles[0], ImportMode.Auto, remoteBook.Author, _trackedDownload.DownloadItem, remoteBook);
+
+            capturedOverrides.Book.Should().BeSameAs(expectedBook);
+        }
+
+        [Test]
         public void should_search_for_author_using_folder_name()
         {
             Subject.ProcessRootFolder(DiskProvider.GetDirectoryInfo(_droneFactory));
